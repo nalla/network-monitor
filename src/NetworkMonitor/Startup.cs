@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Prometheus;
 
 namespace NetworkMonitor
 {
@@ -12,6 +13,8 @@ namespace NetworkMonitor
 		{
 			if( env.IsDevelopment() )
 				app.UseDeveloperExceptionPage();
+
+			app.UseMetricServer();
 		}
 
 		// This method gets called by the runtime. Use this method to add services to the container.

@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Prometheus;
 
 namespace NetworkMonitor
 {
@@ -41,6 +42,7 @@ namespace NetworkMonitor
 
 						state = pingReply?.Status == IPStatus.Success ? NetworkState.Up : NetworkState.Down;
 						Logger.LogDebug( $"{networkTarget.Description}: Current state is {state}" );
+						Metrics.CreateGauge( "network_state", null, "host", "description" ).Labels( networkTarget.NameOrAddress, networkTarget.Description ).Set( state == NetworkState.Down ? 0 : 1 );
 					}
 					catch( Exception )
 					{
