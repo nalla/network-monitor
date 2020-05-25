@@ -8,17 +8,7 @@ namespace NetworkMonitor
 		private NetworkState lastState;
 		private int loop;
 
-		private bool IsDown => history.All( x => x == NetworkState.Down );
-
-		private bool IsUp => history.All( x => x == NetworkState.Up );
-
-		private bool WasDown => lastState == NetworkState.Down;
-
-		private bool WasUp => lastState == NetworkState.Up;
-
 		public string Description { get; set; }
-
-		public bool HasActivity => history.Any( x => x == NetworkState.Up );
 
 		public string NameOrAddress { get; set; }
 
@@ -32,10 +22,12 @@ namespace NetworkMonitor
 			switch( state )
 			{
 				case NetworkState.Up:
-					if( IsUp )
+					if( history.All( x => x == NetworkState.Up ) )
 					{
-						if( WasDown )
+						if( lastState == NetworkState.Down )
+						{
 							detectionState = DetectionState.Startup;
+						}
 
 						lastState = NetworkState.Up;
 					}
@@ -43,10 +35,12 @@ namespace NetworkMonitor
 					break;
 
 				case NetworkState.Down:
-					if( IsDown )
+					if( history.All( x => x == NetworkState.Down ) )
 					{
-						if( WasUp )
+						if( lastState == NetworkState.Up )
+						{
 							detectionState = DetectionState.Shutdown;
+						}
 						lastState = NetworkState.Down;
 					}
 

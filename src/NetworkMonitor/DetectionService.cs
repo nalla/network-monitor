@@ -4,31 +4,28 @@ using System.Net.NetworkInformation;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Prometheus;
 
 namespace NetworkMonitor
 {
 	public class DetectionService : BackgroundService
 	{
-		private IConfiguration Configuration { get; }
+		private readonly IConfiguration configuration;
+		private readonly ILogger logger;
+		private readonly IMailService mailService;
 
-		private ILogger<DetectionService> Logger { get; }
-
-		public DetectionService( ILogger<DetectionService> logger, IConfiguration configuration )
+		public DetectionService( ILogger<DetectionService> logger, IConfiguration configuration, IMailService mailService )
 		{
-			Logger = logger;
-			Configuration = configuration;
+			this.logger = logger;
+			this.configuration = configuration;
+			this.mailService = mailService;
 		}
 
 		protected override async Task ExecuteAsync( CancellationToken cancellationToken )
 		{
-			var networkTargets = Configuration.GetSection( "targets" ).Get<NetworkTarget[]>();
+			var networkTargets = configuration.GetSection( "targets" ).Get<NetworkTarget[]>();
 			var ping = new Ping();
-
-			Logger.LogDebug( $"{nameof(DetectionService)} is starting." );
-
-			cancellationToken.Register( () => Logger.LogDebug( "Background task is stopping." ) );
 
 			while( !cancellationToken.IsCancellationRequested )
 			{
@@ -38,11 +35,10 @@ namespace NetworkMonitor
 
 					try
 					{
-						PingReply pingReply = ping.Send( networkTarget.NameOrAddress );
+						PingReply pingReply = await ping.SendPingAsync( networkTarget.NameOrAddress ).ConfigureAwait(false);
 
 						state = pingReply?.Status == IPStatus.Success ? NetworkState.Up : NetworkState.Down;
-						Logger.LogDebug( $"{networkTarget.Description}: Current state is {state}" );
-						Metrics.CreateGauge( "network_state", null, "host", "description" ).Labels( networkTarget.NameOrAddress, networkTarget.Description ).Set( state == NetworkState.Down ? 0 : 1 );
+						logger.LogInformation( $"{networkTarget.Description}: Current state is {state}" );
 					}
 					catch( Exception )
 					{
@@ -52,22 +48,13 @@ namespace NetworkMonitor
 					DetectionState detectionState = networkTarget.SaveState( state );
 
 					if( detectionState > DetectionState.None )
-						Logger.LogInformation( $"{networkTarget.Description}: {detectionState} detected!" );
+					{
+						await mailService.SendAsync( $"{networkTarget.Description}: {detectionState} detected!" ).ConfigureAwait( false );
+					}
 				}
 
-				await Sleep( networkTargets.Any( x => x.HasActivity ), cancellationToken );
+				await Task.Delay( TimeSpan.FromSeconds( configuration.GetValue( "sleepTime", 10 ) ), cancellationToken ).ConfigureAwait( false );
 			}
-
-			Logger.LogDebug( "Background task is stopping." );
-		}
-
-		private async Task Sleep( bool anyNetworkTargetHasActivity, CancellationToken cancellationToken )
-		{
-			int activitySleepTime = Configuration.GetValue( "activitySleepTime", 10 );
-			int idleSleepTime = Configuration.GetValue( "idleSleepTime", 60 );
-			TimeSpan sleepTime = TimeSpan.FromSeconds( anyNetworkTargetHasActivity ? activitySleepTime : idleSleepTime );
-
-			await Task.Delay( sleepTime, cancellationToken );
 		}
 	}
 }
